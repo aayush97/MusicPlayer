@@ -23,6 +23,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.view.MenuItem;
+import android.widget.Toast;
 
 
 public class MainActivity extends AppCompatActivity implements MediaPlayerControl {
@@ -32,6 +33,7 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
     private MusicService musicSrv;
     private Intent playIntent = null;
     private boolean musicBound = false;
+    DBHelper database;
 
     // tutorial 2nd
     // part 2. Start the service
@@ -173,7 +175,8 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
 
                 return;
             }}
-            //hello
+
+        database = new DBHelper(this);
         songView = (ListView)findViewById(R.id.song_list);
         songList = new ArrayList<>();
         getSongList();
@@ -261,20 +264,55 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
                         }
                     }while(genreCursor.moveToNext());
                 }
-                songList.add(new Song(thisId, thisTitle, thisArtist, thisGenre)); // Rock to be replaced by thisGenre
+                songList.add(new Song(thisId, thisTitle, thisArtist, thisGenre));
+                String tag;
+                if(thisGenre==null) {
+                    tag = "Others";
+                }else if(thisGenre.equals("Jazz") || thisGenre.equals("Rock")){
+                    tag = "happy";
+                }else if(thisGenre.equals("Blues")){
+                    tag = "sad";
+                }else{
+                    tag = "surprise";
+                }
+                if(!database.updateData(thisId,tag))
+                    database.insertData(thisId,thisTitle,thisArtist,thisGenre,0,tag);
             }
             while (musicCursor.moveToNext());
         }
     }
 
     public void songPicked(View view){
-        musicSrv.setSong(Integer.parseInt(view.getTag().toString()));
-        musicSrv.playSong();
-       if(playbackPaused){
-            setController();
-            playbackPaused=false;
+//        musicSrv.setSong(Integer.parseInt(view.getTag().toString()));
+////        musicSrv.playSong();
+////
+////       if(playbackPaused){
+////            setController();
+////            playbackPaused=false;
+////        }
+////        controller.show(0);
+        songRecommended("happy");
+
+    }
+
+
+    // interface to be used by another activity which recommends songs
+    public void songRecommended(String tag){
+        Cursor cursor = database.getData(tag);
+
+        if(cursor!=null && cursor.moveToFirst()){
+            int idColumn = cursor.getColumnIndex(DBHelper.SONGS_COLUMN_ID);
+            ArrayList<Long> foundSongs = new ArrayList<>();
+            do{
+                long songId = cursor.getLong(idColumn);
+                foundSongs.add(songId);
+            }while(cursor.moveToNext());
+            musicSrv.queueSongs(foundSongs);
+            Toast.makeText(this,foundSongs.size() + " songs queued",Toast.LENGTH_SHORT).show();
+            controller.show(0);
+        }else{
+            Toast.makeText(this,"No songs under that tag",Toast.LENGTH_SHORT).show();
         }
-        controller.show(0);
     }
 
     @Override

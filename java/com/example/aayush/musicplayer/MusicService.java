@@ -2,9 +2,11 @@ package com.example.aayush.musicplayer;
 
 import android.app.Service;
 import android.content.Intent;
+import android.database.Cursor;
 import android.media.MediaPlayer;
 import android.os.IBinder;
 import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import java.util.ArrayList;
 import android.content.ContentUris;
@@ -14,9 +16,15 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.PowerManager;
 import android.util.Log;
+
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.Random;
 import android.app.Notification;
 import android.app.PendingIntent;
+import android.widget.Toast;
 
 public class MusicService extends Service implements MediaPlayer.OnPreparedListener,
 MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
@@ -27,6 +35,8 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
     private static final int NOTIFY_ID =1;
     private MediaPlayer player;
     private  ArrayList<Song> songs;
+    private Queue<Long> queuedSongs;
+    private boolean queued = false;
     private int songPosn;
     private final IBinder musicBind = new MusicBinder();
 
@@ -38,10 +48,29 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
 
     @Override
     public void onCompletion(MediaPlayer mp) {
+
         if(player.getCurrentPosition() > 0){
             mp.reset();
-            playNext();
+            if(queued)
+                playNextInQueue();
+            else
+                playNext();
         }
+    }
+
+    private void playNextInQueue() {
+        if(queuedSongs.isEmpty()){
+            queued = false;
+            playNext();
+            return;
+        }
+        long songId = queuedSongs.remove();
+        DBHelper db = new DBHelper(getApplicationContext());
+        Cursor cursor = db.getData(songId);
+        cursor.moveToFirst();
+        songTitle = cursor.getString(cursor.getColumnIndex(DBHelper.SONGS_COLUMN_NAME));
+        playSong(songId);
+        queuedSongs.add(songId);
     }
 
     @Override
@@ -82,6 +111,15 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
         rand = new Random();
     }
 
+    public void queueSongs(ArrayList<Long> songs){
+        queued = true;
+        queuedSongs = new LinkedList<>();
+        for(long songId: songs)
+            queuedSongs.add(songId);
+        playNextInQueue();
+
+    }
+
     public void initMusicPlayer(){
        // player.setWakeMode(getApplicationContext(),
          //       PowerManager.PARTIAL_WAKE_LOCK);
@@ -110,7 +148,8 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
         player.release();
         return false;
     }
-
+    // only to be called after setting song using setSong
+    // for song selected by user directly from the list
     public void playSong(){
         //play a song
         player.reset();
@@ -119,12 +158,24 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
         songTitle = playSong.getTitle();
         //get id
         long currSong = playSong.getId();
-        //set uri
-        Uri trackUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, currSong);
+        playSong(currSong);
+
+    }
+
+
+    // play song directly from id
+    // for song recommended by classifier
+    public void playSong(long id){
+        player.reset();
+        DBHelper db = new DBHelper(getApplicationContext());
+        db.updatePlayedTime(id);
+        Uri trackUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
         try{
             player.setDataSource(getApplicationContext(), trackUri);
         }catch(Exception e){
             Log.e("Music Service","Error setting data source",e);
+            //Toast.makeText(this, "mp3 not found", Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
         }
         player.prepareAsync();
 
@@ -167,6 +218,10 @@ MediaPlayer.OnErrorListener,MediaPlayer.OnCompletionListener{
     }
 
     public void playNext(){
+        if(queued) {
+            playNextInQueue();
+            return;
+        }
         if(shuffle){
             int newSong = songPosn;
             while(newSong==songPosn)
