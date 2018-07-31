@@ -9,12 +9,16 @@ import android.os.Bundle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
+
 import android.net.Uri;
 import android.content.ContentResolver;
 import android.database.Cursor;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.MediaController.MediaPlayerControl;
 import android.os.IBinder;
@@ -23,6 +27,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.view.MenuItem;
+import android.widget.PopupMenu;
 import android.widget.Toast;
 
 
@@ -176,6 +181,7 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
                 return;
             }}
 
+
         database = new DBHelper(this);
         songView = (ListView)findViewById(R.id.song_list);
         songList = new ArrayList<>();
@@ -191,6 +197,30 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
         });
         SongAdapter songAdt = new SongAdapter(this, songList);
         songView.setAdapter(songAdt);
+        songView.setLongClickable(true);
+        songView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> arg0, View arg1,
+                                           int pos, long id) {
+                int index = pos;
+                final long songId = songList.get(index).getId();
+                //Creating the instance of PopupMenu
+                PopupMenu popup = new PopupMenu(getApplicationContext(), arg1);
+                //Inflating the Popup using xml file
+                popup.getMenuInflater().inflate(R.menu.popup, popup.getMenu());
+                popup.show();
+                //registering popup with OnMenuItemClickListener
+                popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+                    public boolean onMenuItemClick(MenuItem item) {
+                        String tag = item.getTitle().toString();
+                        Toast.makeText(getApplicationContext(), tag, Toast.LENGTH_SHORT).show();
+                        database.updateData(songId, tag);
+                        return true;
+                    }
+                });
+                return true;
+            }
+        });
         setController();
     }
 
@@ -250,6 +280,15 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
                 String thisTitle = musicCursor.getString(titleColumn);
                 String thisArtist = musicCursor.getString(artistColumn);
                 String thisGenre = null; //musicCursor.getString(genreColumn);
+                if(database.exists(thisId)) {
+                    Cursor cursor = database.getData(thisId);
+                    cursor.moveToFirst();
+                    songList.add(new Song(cursor.getLong(cursor.getColumnIndex(DBHelper.SONGS_COLUMN_ID)),
+                                          cursor.getString(cursor.getColumnIndex(DBHelper.SONGS_COLUMN_NAME)),
+                                          cursor.getString(cursor.getColumnIndex(DBHelper.SONGS_COLUMN_ARTIST)),
+                                          cursor.getString(cursor.getColumnIndex(DBHelper.SONGS_COLUMN_GENRE))));
+                    continue;
+                }
                 // get genre of the song
                 Uri genreUri = MediaStore.Audio.Genres.getContentUriForAudioId("external",(int)thisId);
                 Cursor genreCursor = musicResolver.query(genreUri,null,null,null,null);
@@ -269,16 +308,16 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
                 if(thisGenre==null) {
                     tag = "Others";
                 }else if(thisGenre.equals("Jazz") || thisGenre.equals("Rock")){
-                    tag = "happy";
+                    tag = "Happy";
                 }else if(thisGenre.equals("Blues")){
-                    tag = "sad";
+                    tag = "Sad";
+                }else if(thisGenre.equals("Metal")){
+                    tag = "Angry";
                 }else{
-                    tag = "surprise";
+                    tag = "Surprise";
                 }
-                if(!database.updateData(thisId,tag))
-                    database.insertData(thisId,thisTitle,thisArtist,thisGenre,0,tag);
-            }
-            while (musicCursor.moveToNext());
+                database.insertData(thisId,thisTitle,thisArtist,thisGenre,0,tag);
+            } while (musicCursor.moveToNext());
         }
     }
 
@@ -291,7 +330,7 @@ public class MainActivity extends AppCompatActivity implements MediaPlayerContro
 ////            playbackPaused=false;
 ////        }
 ////        controller.show(0);
-        songRecommended("happy");
+        songRecommended("Happy");
 
     }
 

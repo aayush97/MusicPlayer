@@ -79,4 +79,11 @@ public class DBHelper extends SQLiteOpenHelper {
         }
         return true;
     }
+    public boolean exists(long id){
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("select * from songs where id = " + id + "", null);
+        if(cursor==null)
+            return false;
+        return true;
+    }
 }
